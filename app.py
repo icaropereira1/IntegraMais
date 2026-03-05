@@ -39,6 +39,9 @@ def get_token(cid, csec):
     else:
         st.error(f"Erro de Autenticação: {response.text}")
         return None
+    
+def logar_vuca(login, senha, instancia, id_unidade):
+    return None
 
 # ==========================================
 # FUNÇÕES: ABA 1 (EXTRAIR)
@@ -192,7 +195,7 @@ def atualizar_item(token, m_id, id_obj, novo_codigo, nivel):
 # ==========================================
 # INTERFACE DO USUÁRIO (TABS)
 # ==========================================
-tab1, tab2 = st.tabs(["📥 1. Baixar Planilha", "📤 2. Atualizar PDVs"])
+tab1, tab2, tab3 = st.tabs(["📥 1. Baixar planilha iFood","📤 2. Atualizar PDV's no iFood", "📤 3. Baixar planilha Vuca"])
 
 with tab1:
     st.header("Baixar Cardápio Atual")
@@ -298,3 +301,7 @@ with tab2:
                     
                 except Exception as e:
                     st.error(f"Erro ao processar: {e}")
+
+with tab3:
+    st.header("Baixar Planilha do Vuca")
+    st.write("Em breve!")
