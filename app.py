@@ -4,21 +4,31 @@ import pandas as pd
 from datetime import datetime
 import time
 import io
+from bs4 import BeautifulSoup
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Gestor de PDV iFood", page_icon="🍔", layout="wide")
-st.title("🍔 Gestor de Códigos PDV - iFood")
+st.set_page_config(page_title="Gestor de PDV", page_icon="🍔", layout="wide")
+st.title("🍔 Gestor de Códigos PDV")
 
 # --- ENDPOINTS BASE ---
 URL_AUTH = "https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token"
 URL_CATALOG_BASE = "https://merchant-api.ifood.com.br/catalog/v1.0/merchants"
+URL_VUCA_BASE = "https://{instancia}.vucasolution.com.br/"
 
-# --- SIDEBAR: CREDENCIAIS ---
-st.sidebar.header("🔑 Credenciais da API")
+# --- SIDEBAR: CREDENCIAIS VUCA ---
+st.sidebar.header("🔑 Credenciais da API do iFood")
 st.sidebar.markdown("Insira os dados da loja para conectar.")
 client_id = st.sidebar.text_input("Client ID", type="password")
 client_secret = st.sidebar.text_input("Client Secret", type="password")
 merchant_id = st.sidebar.text_input("Merchant ID (ID da Loja)")
+
+# --- SIDEBAR: CREDENCIAIS VUCA ---
+st.sidebar.header("🔑 Credenciais para login no Vuca")
+st.sidebar.markdown("Insira os dados da loja para conectar.")
+v_login = st.sidebar.text_input("Login")
+v_senha = st.sidebar.text_input("Senha", type="password")
+v_instancia = st.sidebar.text_input("Instância")
+v_unidade = st.sidebar.text_input("ID da unidade")
 
 def get_token(cid, csec):
     payload = {"grantType": "client_credentials", "clientId": cid, "clientSecret": csec}
