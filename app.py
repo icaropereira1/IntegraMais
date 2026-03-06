@@ -13,7 +13,6 @@ st.title("🍔 Gestor de Códigos PDV")
 # --- ENDPOINTS BASE ---
 URL_AUTH = "https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token"
 URL_CATALOG_BASE = "https://merchant-api.ifood.com.br/catalog/v1.0/merchants"
-URL_VUCA_BASE = "https://{instancia}.vucasolution.com.br/"
 
 # --- SIDEBAR: CREDENCIAIS VUCA ---
 st.sidebar.header("🔑 Credenciais da API do iFood")
@@ -28,7 +27,7 @@ st.sidebar.markdown("Insira os dados da loja para conectar.")
 v_login = st.sidebar.text_input("Login")
 v_senha = st.sidebar.text_input("Senha", type="password")
 v_instancia = st.sidebar.text_input("Instância")
-v_unidade = st.sidebar.text_input("ID da unidade")
+v_id_unidade = st.sidebar.text_input("ID da unidade")
 
 def get_token(cid, csec):
     payload = {"grantType": "client_credentials", "clientId": cid, "clientSecret": csec}
@@ -41,11 +40,20 @@ def get_token(cid, csec):
         return None
     
 def logar_vuca(login, senha, instancia, id_unidade):
-    return None
+    url_login = f"https://{instancia}.vucasolution.com.br/retaguarda/"
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0", "Accept-Language": "pt-BR,pt;q=0.9"})
+    session.get(f"{url_login}login.php")
+    r = session.post(f"{url_login}usuarios/login.php", data={
+        "auth_login": login, "auth_senha": senha,
+        "url": f"/retaguarda/pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}"
+    }, allow_redirects=True)
+    
+    if "auth_login" in r.text or "não está autenticado" in r.text.lower():
+        raise Exception("Verifique usuário e senha.")
+    
+    return session, url_login
 
-# ==========================================
-# FUNÇÕES: ABA 1 (EXTRAIR)
-# ==========================================
 def extrair_cardapio(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -149,9 +157,6 @@ def gerar_excel_em_memoria(df):
     writer.close()
     return output.getvalue()
 
-# ==========================================
-# FUNÇÕES: ABA 2 (ATUALIZAR)
-# ==========================================
 def mapear_codigos_atuais(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
     url_base_v2 = f"https://merchant-api.ifood.com.br/catalog/v2.0/merchants/{m_id}"
@@ -192,16 +197,13 @@ def atualizar_item(token, m_id, id_obj, novo_codigo, nivel):
     return requests.patch(url, json=payload, headers=headers)
 
 
-# ==========================================
-# INTERFACE DO USUÁRIO (TABS)
-# ==========================================
 tab1, tab2, tab3 = st.tabs(["📥 1. Baixar planilha iFood","📤 2. Atualizar PDV's no iFood", "📤 3. Baixar planilha Vuca"])
 
 with tab1:
     st.header("Baixar Cardápio Atual")
     st.write("Gere a planilha bloqueada contendo o cardápio atual do iFood.")
     
-    if st.button("Gerar Planilha"):
+    if st.button("Gerar Planilha iFood"):
         if not client_id or not client_secret or not merchant_id:
             st.warning("Preencha todas as credenciais na barra lateral primeiro.")
         else:
@@ -304,4 +306,16 @@ with tab2:
 
 with tab3:
     st.header("Baixar Planilha do Vuca")
-    st.write("Em breve!")
+    
+    if st.button("Gerar Planilha Vuca"):
+        if not v_instancia or not v_login or not v_senha or not v_id_unidade:
+            st.warning("Preencha todas as credenciais na barra lateral primeiro.")
+        else:
+            with st.spinner("Fazendo login..."):
+                try:
+                    session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade)
+                    st.success("Login no Vuca realizado com sucesso!")
+                    st.info("A funcionalidade de extração do cardápio do Vuca está em desenvolvimento e será lançada em breve.")
+
+                except Exception as e:
+                    st.error(f"Erro ao logar no Vuca: {e}")
