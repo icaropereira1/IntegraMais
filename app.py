@@ -54,7 +54,7 @@ def logar_vuca(login, senha, instancia, id_unidade):
     
     return session, url_login
 
-def extrair_cardapio(token, m_id):
+def extrair_cardapio_ifood(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
     
     # 1. Busca Catálogo
@@ -211,7 +211,7 @@ with tab1:
                 try:
                     token = get_token(client_id, client_secret)
                     if token:
-                        df_cardapio = extrair_cardapio(token, merchant_id)
+                        df_cardapio = extrair_cardapio_ifood(token, merchant_id)
                         excel_data = gerar_excel_em_memoria(df_cardapio)
                         
                         data_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -315,7 +315,7 @@ with tab3:
                 try:
                     session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade)
                     st.success("Login no Vuca realizado com sucesso!")
-                    st.info("A funcionalidade de extração do cardápio do Vuca está em desenvolvimento e será lançada em breve.")
+                    st.info("")
 
                 except Exception as e:
                     st.error(f"Erro ao logar no Vuca: {e}")
