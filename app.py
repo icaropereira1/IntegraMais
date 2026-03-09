@@ -57,15 +57,52 @@ def logar_vuca(login, senha, instancia, id_unidade):
         raise Exception("Falha no login. Verifique as credenciais e tente novamente.")
     
     return session, url_login
-'''
+
 def extrair_cardapio_vuca(session, url_login, id_unidade):
     soup = BeautifulSoup(session.get(f"{url_login}pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}").content, "html.parser")
     itens = []
-    for row in soup.find_all("tr",  class=lambda x: x and "js-tr-" in x):
-        pdv_item_vuca = row.find("data-id")
-'''
+    categorias = []
 
+    for row in soup.find_all("tr", class_=lambda x: x and "js-categorias" in x):
+        print(f"Atributos desta linha: {row.attrs}")
 
+        categoria_id = row.get("data-id_categoria")
+
+        legend_categoria_sem_formatacao = row.find ("legend")
+        nome_categoria = legend_categoria_sem_formatacao.text.strip() if legend_categoria_sem_formatacao else None
+        print(nome_categoria)
+
+        categorias.append({
+        "id_categoria": categoria_id,
+        "nome_categoria": nome_categoria
+    })
+    
+    categoria_map = {categoria["id_categoria"]: categoria["nome_categoria"] for categoria in categorias}
+
+    for row in soup.find_all("tr", class_=lambda x: x and "js-tr-" in x):
+        #item_vuca = row.get("data-id")
+
+        # extraindo informações do item
+        edita_vuca_semformatacao = row.get("class")
+        codigo_edita_formatado = edita_vuca_semformatacao[0].replace("js-tr-", "")
+
+        nome_item_vuca_semformatacao = row.find("td", {"data-th": "Produto"})
+        nome_item_formatado = nome_item_vuca_semformatacao.text.strip() if nome_item_vuca_semformatacao else None
+
+        codigopdv_item_vuca_semformatacao = row.find("td", {"data-th": "Código PDV"})
+        pdvtemp = codigopdv_item_vuca_semformatacao.find("input") if codigopdv_item_vuca_semformatacao else None
+        codigopdv_item_formatado = pdvtemp.get("value") if pdvtemp else None
+
+        id_categoria_do_item_vuca = row.get("data-id_categoria")
+
+        itens.append({
+            "nome_categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
+            "nome_item": nome_item_formatado,
+            "codigo_edita": codigo_edita_formatado,
+            "codigo_pdv": codigopdv_item_formatado
+            })
+    
+    return itens, categorias
     
 def extrair_cardapio_ifood(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
