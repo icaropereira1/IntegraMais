@@ -126,6 +126,7 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
             "Nível": "PRODUTO",
             "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
             "Produto Pai": nome_item_formatado,
+            "Grupo de opcionais": "",
             "Item / Opcional": nome_item_formatado,
             "Código PDV": codigopdv_item_formatado,
             "Código Edita": codigo_edita_formatado
@@ -134,17 +135,31 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
         lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado)
 
         for opcional in lista_opcionais:
-            nome_filho = f"{opcional['categoria_grupoopcionais']} -> {opcional['nome']}"
             itens.append({
             "Nível": "COMPLEMENTO",
             "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
             "Produto Pai": nome_item_formatado,
-            "Item / Opcional": nome_filho,
+            "Grupo de opcionais": opcional["categoria_grupoopcionais"],
+            "Item / Opcional": opcional["nome"],
             "Código PDV": opcional["codigo_pdv"],
             "Código Edita": opcional["codigo_pdv"]
             })
 
-    return itens
+    df_temp = pd.DataFrame(itens)
+    
+    df_temp['Código PDV'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
+
+    df_temp['PDV_Referencia'] = df_temp['Código PDV'].where(df_temp['Nível'] == 'PRODUTO')
+    df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
+
+    df_temp = df_temp.sort_values(
+        by=['PDV_Referencia', 'Nível', 'Código PDV'], 
+        ascending=[True, False, True]
+    )
+
+    df_temp = df_temp.drop(columns=['PDV_Referencia'])
+    
+    return df_temp.to_dict('records')
     
 def extrair_cardapio_ifood(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
@@ -180,6 +195,7 @@ def extrair_cardapio_ifood(token, m_id):
                     "Nível": "PRODUTO",
                     "Categoria": cat_name,
                     "Produto Pai": item.get('name'),
+                    "Grupo de opcionais": "",
                     "Item / Opcional": item.get('name'),
                     "Código PDV (externalCode)": item.get('externalCode', ''),
                     "Status": item.get('status', ''),
@@ -198,7 +214,8 @@ def extrair_cardapio_ifood(token, m_id):
                             "Nível": "COMPLEMENTO",
                             "Categoria": cat_name,
                             "Produto Pai": current_prod_name,
-                            "Item / Opcional": f"[{group_name}] {option.get('name')}",
+                            "Grupo de opcionais": group_name, 
+                            "Item / Opcional": f"{option.get('name')}",
                             "Código PDV (externalCode)": option.get('externalCode', ''),
                             "Status": option.get('status', ''),
                             "ID iFood": opt_id
@@ -216,7 +233,7 @@ def gerar_excel_em_memoria(df):
     formato_bloqueado = workbook.add_format({'locked': True, 'bg_color': '#F4F9FF'})
     formato_liberado = workbook.add_format({'locked': False})
 
-    colunas_para_bloquear = ["Nível", "Categoria", "Produto Pai", "Item / Opcional", "Status", "ID iFood"]
+    colunas_para_bloquear = ["Nível", "Categoria", "Produto Pai", "Item / Opcional", "Status", "ID iFood", "Código PDV", "Código Editado", "Grupo de opcionais"]
 
     for col_num, col_name in enumerate(df.columns):
         max_len = max(df[col_name].astype(str).map(len).max(), len(str(col_name))) + 2
