@@ -3,3 +3,4 @@ requests
 pandas 
 xlsxwriter 
 openpyxl
+bs4
