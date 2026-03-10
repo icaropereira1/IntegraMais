@@ -24,10 +24,10 @@ merchant_id = st.sidebar.text_input("Merchant ID (ID da Loja)")
 # --- SIDEBAR: CREDENCIAIS VUCA ---
 st.sidebar.header("🔑 Credenciais para login no Vuca")
 st.sidebar.markdown("Insira os dados da loja para conectar.")
-v_login = st.sidebar.text_input("Login")
-v_senha = st.sidebar.text_input("Senha", type="password")
 v_instancia = st.sidebar.text_input("Instância")
 v_id_unidade = st.sidebar.text_input("ID da unidade")
+v_login = st.sidebar.text_input("Login")
+v_senha = st.sidebar.text_input("Senha", type="password")
 
 def get_token(cid, csec):
     payload = {"grantType": "client_credentials", "clientId": cid, "clientSecret": csec}
@@ -48,10 +48,6 @@ def logar_vuca(login, senha, instancia, id_unidade):
         "auth_login": login, "auth_senha": senha,
         "url": f"/retaguarda/pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}"
     }, allow_redirects=True)
-    print(f"Status Code: {r.status_code}")
-    print(f"URL Final: {r.url}") # Verifica se houve o redirecionamento esperado
-    print(r.text) # Veja o todo o HTML retornado para entender o que aconteceu
-    
     
     if r.status_code != 200:
         raise Exception("Falha no login. Verifique as credenciais e tente novamente.")
@@ -61,6 +57,7 @@ def logar_vuca(login, senha, instancia, id_unidade):
 def extrair_detalhes_adicionais(session, url_base, id_item):
     url_ajax = f"{url_base}pg_aplicativos_cardapio_ifood.php?ajax=listarAdicionais&id_item_cardapio={id_item}"
     response = session.get(url_ajax)
+
     soup_ajax = BeautifulSoup(response.content, "html.parser")
 
     adicionais = []
@@ -134,7 +131,7 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
             "Código Edita": codigo_edita_formatado
             })
         
-        lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigo_edita_formatado)
+        lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado)
 
         for opcional in lista_opcionais:
             nome_filho = f"{opcional['categoria_grupoopcionais']} -> {opcional['nome']}"
@@ -410,9 +407,20 @@ with tab3:
                 try:
                     session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade)
                     st.success("Login no Vuca realizado com sucesso!")
-                   #st.info("")
-
+                    with st.spinner("Extraindo cardápio do Vuca..."):
+                        itens_vuca = extrair_cardapio_vuca(session, url_login, v_id_unidade)
+                        df_vuca = pd.DataFrame(itens_vuca)
+                        excel_data_vuca = gerar_excel_em_memoria(df_vuca)
+                        
+                        data_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                        st.success("Planilha do Vuca gerada com sucesso!")
+                        st.download_button(
+                            label="📥 Clique aqui para Baixar o Excel do Vuca",
+                            data=excel_data_vuca,
+                            file_name=f"Cardapio_Vuca_{v_id_unidade}_{data_str}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
                 except Exception as e:
                     st.error(f"Erro ao logar no Vuca: {e}")
-            
-            
+                    
