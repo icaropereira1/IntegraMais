@@ -58,20 +58,50 @@ def logar_vuca(login, senha, instancia, id_unidade):
     
     return session, url_login
 
+def extrair_detalhes_adicionais(session, url_base, id_item):
+    url_ajax = f"{url_base}pg_aplicativos_cardapio_ifood.php?ajax=listarAdicionais&id_item_cardapio={id_item}"
+    response = session.get(url_ajax)
+    soup_ajax = BeautifulSoup(response.content, "html.parser")
+
+    adicionais = []
+
+    grupos = soup_ajax.find_all("fieldset", class_="box-registros")
+
+    for grupo in grupos:
+        nome_grupodeopcionais_sem_formatacao = grupo.find("legend")
+        nome_grupodeopcionais_formatado = nome_grupodeopcionais_sem_formatacao.text.strip() if nome_grupodeopcionais_sem_formatacao else "Grupo de Opcionais Desconecido"
+                
+        linhas_opcionais = grupo.find("tbody").find_all("tr")
+
+        tbody = grupo.find("tbody")
+        if not tbody:continue
+
+        for tr in linhas_opcionais:
+            colunas = tr.find_all("td")
+            if len(colunas) >= 2:
+                nome_opcional = colunas[0].get_text(strip=True)
+                codigo_pdv_opcional = colunas[1].get_text(strip=True)
+                
+            adicionais.append({
+            "nivel": "COMPLEMENTO",
+            "categoria_grupoopcionais": nome_grupodeopcionais_formatado,
+            "nome": nome_opcional,
+            "codigo_pdv": codigo_pdv_opcional
+            })           
+    return adicionais
+
 def extrair_cardapio_vuca(session, url_login, id_unidade):
     soup = BeautifulSoup(session.get(f"{url_login}pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}").content, "html.parser")
     itens = []
     categorias = []
 
     for row in soup.find_all("tr", class_=lambda x: x and "js-categorias" in x):
-        print(f"Atributos desta linha: {row.attrs}")
-
+        
         categoria_id = row.get("data-id_categoria")
 
         legend_categoria_sem_formatacao = row.find ("legend")
         nome_categoria = legend_categoria_sem_formatacao.text.strip() if legend_categoria_sem_formatacao else None
-        print(nome_categoria)
-
+        
         categorias.append({
         "id_categoria": categoria_id,
         "nome_categoria": nome_categoria
@@ -96,13 +126,28 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
         id_categoria_do_item_vuca = row.get("data-id_categoria")
 
         itens.append({
-            "nome_categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
-            "nome_item": nome_item_formatado,
-            "codigo_edita": codigo_edita_formatado,
-            "codigo_pdv": codigopdv_item_formatado
+            "Nível": "PRODUTO",
+            "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
+            "Produto Pai": nome_item_formatado,
+            "Item / Opcional": nome_item_formatado,
+            "Código PDV": codigopdv_item_formatado,
+            "Código Edita": codigo_edita_formatado
             })
-    
-    return itens, categorias
+        
+        lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigo_edita_formatado)
+
+        for opcional in lista_opcionais:
+            nome_filho = f"{opcional['categoria_grupoopcionais']} -> {opcional['nome']}"
+            itens.append({
+            "Nível": "COMPLEMENTO",
+            "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
+            "Produto Pai": nome_item_formatado,
+            "Item / Opcional": nome_filho,
+            "Código PDV": opcional["codigo_pdv"],
+            "Código Edita": opcional["codigo_pdv"]
+            })
+
+    return itens
     
 def extrair_cardapio_ifood(token, m_id):
     headers = {"Authorization": f"Bearer {token}"}
@@ -369,3 +414,5 @@ with tab3:
 
                 except Exception as e:
                     st.error(f"Erro ao logar no Vuca: {e}")
+            
+            
