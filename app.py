@@ -129,7 +129,7 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
             "Grupo de opcionais": "",
             "Item / Opcional": nome_item_formatado,
             "Código PDV": codigopdv_item_formatado,
-            "Código Edita": codigo_edita_formatado
+            "Link:": f"{url_login}pg_produtos.php?form=1&edita={codigo_edita_formatado}"
             })
         
         lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado)
@@ -142,7 +142,7 @@ def extrair_cardapio_vuca(session, url_login, id_unidade):
             "Grupo de opcionais": opcional["categoria_grupoopcionais"],
             "Item / Opcional": opcional["nome"],
             "Código PDV": opcional["codigo_pdv"],
-            "Código Edita": opcional["codigo_pdv"]
+            "Link:": f"{url_login}pg_produtos.php?form=1&edita={opcional['codigo_pdv']}"
             })
 
     df_temp = pd.DataFrame(itens)
@@ -420,23 +420,22 @@ with tab3:
         if not v_instancia or not v_login or not v_senha or not v_id_unidade:
             st.warning("Preencha todas as credenciais na barra lateral primeiro.")
         else:
-            with st.spinner("Fazendo login..."):
+            with st.spinner("Fazendo login e extraindo informações do cardápio..."):
                 try:
                     session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade)
                     st.success("Login no Vuca realizado com sucesso!")
-                    with st.spinner("Extraindo cardápio do Vuca..."):
-                        itens_vuca = extrair_cardapio_vuca(session, url_login, v_id_unidade)
-                        df_vuca = pd.DataFrame(itens_vuca)
-                        excel_data_vuca = gerar_excel_em_memoria(df_vuca)
-                        
-                        data_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
-                        st.success("Planilha do Vuca gerada com sucesso!")
-                        st.download_button(
-                            label="📥 Clique aqui para Baixar o Excel do Vuca",
-                            data=excel_data_vuca,
-                            file_name=f"Cardapio_Vuca_{v_id_unidade}_{data_str}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                    itens_vuca = extrair_cardapio_vuca(session, url_login, v_id_unidade)
+                    df_vuca = pd.DataFrame(itens_vuca)
+                    excel_data_vuca = gerar_excel_em_memoria(df_vuca)
+                    
+                    data_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                    st.success("Planilha do Vuca gerada com sucesso!")
+                    st.download_button(
+                        label="📥 Clique aqui para Baixar o Excel do Vuca",
+                        data=excel_data_vuca,
+                        file_name=f"Cardapio_Vuca_{v_id_unidade}_{data_str}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
                         
                 except Exception as e:
                     st.error(f"Erro ao logar no Vuca: {e}")
