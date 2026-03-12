@@ -12,6 +12,16 @@ PARAMETROS_ADICIONAIS = {
     "keeta":          "id_item_cardapio",
 }
 
+def formatar_codigo_produto(codigo, delivery):
+    if delivery == "nnfood":
+        return f"item_{codigo}"
+    return codigo
+
+def formatar_codigo_opcional(codigo, delivery):
+    if delivery == "nnfood":
+        return f"ad_{codigo}"
+    return codigo
+
 def logar_vuca(login, senha, instancia, id_unidade, delivery):
     url_login = f"https://{instancia}.vucasolution.com.br/retaguarda/"
     session = requests.Session()
@@ -97,15 +107,15 @@ def extrair_cardapio_vuca(session, url_login, id_unidade, delivery):
         id_categoria_do_item_vuca = row.get("data-id_categoria")
 
         itens.append({
-            "Nível": "PRODUTO",
-            "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
-            "Produto Pai": nome_item_formatado,
-            "Grupo de opcionais": "",
-            "Item / Opcional": nome_item_formatado,
-            "Código PDV": codigopdv_item_formatado,
-            "Link": f"{url_login}pg_produtos.php?form=1&edita={codigo_edita_formatado}"
-            })
-        
+        "Nível": "PRODUTO",
+        "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
+        "Produto Pai": nome_item_formatado,
+        "Grupo de opcionais": "",
+        "Item / Opcional": nome_item_formatado,
+        "Código PDV": formatar_codigo_produto(codigopdv_item_formatado, delivery),
+        "Link": f"{url_login}pg_produtos.php?form=1&edita={codigo_edita_formatado}"
+        })
+
         lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado, delivery)
 
         for opcional in lista_opcionais:
@@ -115,22 +125,17 @@ def extrair_cardapio_vuca(session, url_login, id_unidade, delivery):
             "Produto Pai": nome_item_formatado,
             "Grupo de opcionais": opcional["categoria_grupoopcionais"],
             "Item / Opcional": opcional["nome"],
-            "Código PDV": opcional["codigo_pdv"],
+            "Código PDV": formatar_codigo_opcional(opcional["codigo_pdv"], delivery),
             "Link": f"{url_login}pg_produtos.php?form=1&edita={opcional['codigo_pdv']}"
             })
 
     df_temp = pd.DataFrame(itens)
     
-    df_temp['Código PDV'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
-
-    df_temp['PDV_Referencia'] = df_temp['Código PDV'].where(df_temp['Nível'] == 'PRODUTO')
-    df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
-
-    df_temp = df_temp.sort_values(
-        by=['PDV_Referencia', 'Nível', 'Código PDV'], 
-        ascending=[True, False, True]
-    )
-
-    df_temp = df_temp.drop(columns=['PDV_Referencia'])
+    if delivery != "nnfood":
+        df_temp['Código PDV'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
+        df_temp['PDV_Referencia'] = df_temp['Código PDV'].where(df_temp['Nível'] == 'PRODUTO')
+        df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
+        df_temp = df_temp.sort_values(by=['PDV_Referencia', 'Nível', 'Código PDV'], ascending=[True, False, True])
+        df_temp = df_temp.drop(columns=['PDV_Referencia'])
     
     return df_temp.to_dict('records')
