@@ -37,9 +37,14 @@ def logar_vuca(login, senha, instancia, id_unidade, delivery):
     
     return session, url_login
 
-def extrair_detalhes_adicionais(session, url_base, id_item, delivery):
+def extrair_detalhes_adicionais(session, url_base, id_item, delivery, id_unidade):
     param = PARAMETROS_ADICIONAIS.get(delivery, "id_produto")
-    url_ajax = f"{url_base}pg_aplicativos_cardapio_{delivery}.php?ajax=listarAdicionais&{param}={id_item}"
+
+    if delivery == "cardapioWeb":
+        url_ajax = f"{url_base}pg_aplicativos_cardapio_{delivery}.php?ajax=listarAdicionais&id_unidade={id_unidade}&{param}={id_item}"
+    else:
+        url_ajax = f"{url_base}pg_aplicativos_cardapio_{delivery}.php?ajax=listarAdicionais&{param}={id_item}"
+
     response = session.get(url_ajax)
 
     soup_ajax = BeautifulSoup(response.content, "html.parser")
@@ -91,7 +96,7 @@ def extrair_cardapio_vuca(session, url_login, id_unidade, delivery):
     categoria_map = {categoria["id_categoria"]: categoria["nome_categoria"] for categoria in categorias}
 
     for row in soup.find_all("tr", class_=lambda x: x and "js-tr-" in x):
-        #item_vuca = row.get("data-id")
+        item_vuca_id = row.get("data-id")
 
         # extraindo informações do item
         edita_vuca_semformatacao = row.get("class")
@@ -116,7 +121,9 @@ def extrair_cardapio_vuca(session, url_login, id_unidade, delivery):
         "Link": f"{url_login}pg_produtos.php?form=1&edita={codigo_edita_formatado}"
         })
 
-        lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado, delivery)
+        id_para_adicionais = codigopdv_item_formatado if delivery in ["ifood","nnfood", "keeta"] else item_vuca_id
+
+        lista_opcionais = extrair_detalhes_adicionais(session, url_login, id_para_adicionais, delivery, id_unidade)
 
         for opcional in lista_opcionais:
             itens.append({
