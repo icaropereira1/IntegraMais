@@ -1,18 +1,15 @@
-import streamlit as st
-import requests
-import pandas as pd
 from datetime import datetime
 import time
-import io
-from bs4 import BeautifulSoup
+import streamlit as st
+import pandas as pd
+from utils.excel import gerar_excel_em_memoria
+from services.ifood import get_token, extrair_cardapio_ifood, mapear_codigos_atuais, atualizar_item
+from services.vuca import logar_vuca, extrair_cardapio_vuca
+
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestor de PDV", page_icon="🍔", layout="wide")
 st.title("🍔 Gestor de Códigos PDV")
-
-# --- ENDPOINTS BASE ---
-URL_AUTH = "https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token"
-URL_CATALOG_BASE = "https://merchant-api.ifood.com.br/catalog/v1.0/merchants"
 
 # --- SIDEBAR: CREDENCIAIS VUCA ---
 st.sidebar.header("🔑 Credenciais da API do iFood")
@@ -28,283 +25,6 @@ v_instancia = st.sidebar.text_input("Instância")
 v_id_unidade = st.sidebar.text_input("ID da unidade")
 v_login = st.sidebar.text_input("Login")
 v_senha = st.sidebar.text_input("Senha", type="password")
-
-def get_token(cid, csec):
-    payload = {"grantType": "client_credentials", "clientId": cid, "clientSecret": csec}
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    response = requests.post(URL_AUTH, data=payload, headers=headers)
-    if response.status_code == 200:
-        return response.json()['accessToken']
-    else:
-        st.error(f"Erro de Autenticação: {response.text}")
-        return None
-    
-def logar_vuca(login, senha, instancia, id_unidade):
-    url_login = f"https://{instancia}.vucasolution.com.br/retaguarda/"
-    session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0", "Accept-Language": "pt-BR,pt;q=0.9"})
-    session.get(f"{url_login}login.php")
-    r = session.post(f"{url_login}usuarios/login.php", data={
-        "auth_login": login, "auth_senha": senha,
-        "url": f"/retaguarda/pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}"
-    }, allow_redirects=True)
-    
-    if r.status_code != 200:
-        raise Exception("Falha no login. Verifique as credenciais e tente novamente.")
-    
-    return session, url_login
-
-def extrair_detalhes_adicionais(session, url_base, id_item):
-    url_ajax = f"{url_base}pg_aplicativos_cardapio_ifood.php?ajax=listarAdicionais&id_item_cardapio={id_item}"
-    response = session.get(url_ajax)
-
-    soup_ajax = BeautifulSoup(response.content, "html.parser")
-
-    adicionais = []
-
-    grupos = soup_ajax.find_all("fieldset", class_="box-registros")
-
-    for grupo in grupos:
-        nome_grupodeopcionais_sem_formatacao = grupo.find("legend")
-        nome_grupodeopcionais_formatado = nome_grupodeopcionais_sem_formatacao.text.strip() if nome_grupodeopcionais_sem_formatacao else "Grupo de Opcionais Desconecido"
-                
-        linhas_opcionais = grupo.find("tbody").find_all("tr")
-
-        tbody = grupo.find("tbody")
-        if not tbody:continue
-
-        for tr in linhas_opcionais:
-            colunas = tr.find_all("td")
-            if len(colunas) >= 2:
-                nome_opcional = colunas[0].get_text(strip=True)
-                codigo_pdv_opcional = colunas[1].get_text(strip=True)
-                
-            adicionais.append({
-            "nivel": "COMPLEMENTO",
-            "categoria_grupoopcionais": nome_grupodeopcionais_formatado,
-            "nome": nome_opcional,
-            "codigo_pdv": codigo_pdv_opcional
-            })           
-    return adicionais
-
-def extrair_cardapio_vuca(session, url_login, id_unidade):
-    soup = BeautifulSoup(session.get(f"{url_login}pg_aplicativos_cardapio_ifood.php?csv=1&form=1&id_unidade={id_unidade}").content, "html.parser")
-    itens = []
-    categorias = []
-
-    for row in soup.find_all("tr", class_=lambda x: x and "js-categorias" in x):
-        
-        categoria_id = row.get("data-id_categoria")
-
-        legend_categoria_sem_formatacao = row.find ("legend")
-        nome_categoria = legend_categoria_sem_formatacao.text.strip() if legend_categoria_sem_formatacao else None
-        
-        categorias.append({
-        "id_categoria": categoria_id,
-        "nome_categoria": nome_categoria
-    })
-    
-    categoria_map = {categoria["id_categoria"]: categoria["nome_categoria"] for categoria in categorias}
-
-    for row in soup.find_all("tr", class_=lambda x: x and "js-tr-" in x):
-        #item_vuca = row.get("data-id")
-
-        # extraindo informações do item
-        edita_vuca_semformatacao = row.get("class")
-        codigo_edita_formatado = edita_vuca_semformatacao[0].replace("js-tr-", "")
-
-        nome_item_vuca_semformatacao = row.find("td", {"data-th": "Produto"})
-        nome_item_formatado = nome_item_vuca_semformatacao.text.strip() if nome_item_vuca_semformatacao else None
-
-        codigopdv_item_vuca_semformatacao = row.find("td", {"data-th": "Código PDV"})
-        pdvtemp = codigopdv_item_vuca_semformatacao.find("input") if codigopdv_item_vuca_semformatacao else None
-        codigopdv_item_formatado = pdvtemp.get("value") if pdvtemp else None
-
-        id_categoria_do_item_vuca = row.get("data-id_categoria")
-
-        itens.append({
-            "Nível": "PRODUTO",
-            "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
-            "Produto Pai": nome_item_formatado,
-            "Grupo de opcionais": "",
-            "Item / Opcional": nome_item_formatado,
-            "Código PDV": codigopdv_item_formatado,
-            "Link:": f"{url_login}pg_produtos.php?form=1&edita={codigo_edita_formatado}"
-            })
-        
-        lista_opcionais = extrair_detalhes_adicionais(session, url_login, codigopdv_item_formatado)
-
-        for opcional in lista_opcionais:
-            itens.append({
-            "Nível": "COMPLEMENTO",
-            "Categoria": categoria_map.get(id_categoria_do_item_vuca, "Categoria Desconhecida"),
-            "Produto Pai": nome_item_formatado,
-            "Grupo de opcionais": opcional["categoria_grupoopcionais"],
-            "Item / Opcional": opcional["nome"],
-            "Código PDV": opcional["codigo_pdv"],
-            "Link:": f"{url_login}pg_produtos.php?form=1&edita={opcional['codigo_pdv']}"
-            })
-
-    df_temp = pd.DataFrame(itens)
-    
-    df_temp['Código PDV'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
-
-    df_temp['PDV_Referencia'] = df_temp['Código PDV'].where(df_temp['Nível'] == 'PRODUTO')
-    df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
-
-    df_temp = df_temp.sort_values(
-        by=['PDV_Referencia', 'Nível', 'Código PDV'], 
-        ascending=[True, False, True]
-    )
-
-    df_temp = df_temp.drop(columns=['PDV_Referencia'])
-    
-    return df_temp.to_dict('records')
-    
-def extrair_cardapio_ifood(token, m_id):
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Busca Catálogo
-    r_catalogs = requests.get(f"{URL_CATALOG_BASE}/{m_id}/catalogs", headers=headers)
-    if r_catalogs.status_code != 200:
-        raise Exception(f"Erro ao listar catálogos: {r_catalogs.text}")
-        
-    catalogs = r_catalogs.json()
-    if not catalogs:
-        raise Exception("Nenhum catálogo encontrado para esta loja.")
-    
-    catalog_id = catalogs[0]['catalogId']
-
-    # 2. Baixa Árvore
-    url_categories = f"{URL_CATALOG_BASE}/{m_id}/catalogs/{catalog_id}/categories?includeItems=true"
-    r_categories = requests.get(url_categories, headers=headers)
-    categories = r_categories.json()
-
-    # 3. Processamento
-    rows = []
-    ids_processados = set()
-
-    for category in categories:
-        cat_name = category.get('name', 'SEM CATEGORIA')
-        for item in category.get('items', []):
-            prod_id = item.get('id')
-            
-            if prod_id not in ids_processados:
-                ids_processados.add(prod_id)
-                rows.append({
-                    "Nível": "PRODUTO",
-                    "Categoria": cat_name,
-                    "Produto Pai": item.get('name'),
-                    "Grupo de opcionais": "",
-                    "Item / Opcional": item.get('name'),
-                    "Código PDV (externalCode)": item.get('externalCode', ''),
-                    "Status": item.get('status', ''),
-                    "ID iFood": prod_id
-                })
-            
-            current_prod_name = item.get('name')
-
-            for group in item.get('optionGroups', []):
-                group_name = group.get('name')
-                for option in group.get('options', []):
-                    opt_id = option.get('id')
-                    if opt_id not in ids_processados:
-                        ids_processados.add(opt_id)
-                        rows.append({
-                            "Nível": "COMPLEMENTO",
-                            "Categoria": cat_name,
-                            "Produto Pai": current_prod_name,
-                            "Grupo de opcionais": group_name, 
-                            "Item / Opcional": f"{option.get('name')}",
-                            "Código PDV (externalCode)": option.get('externalCode', ''),
-                            "Status": option.get('status', ''),
-                            "ID iFood": opt_id
-                        })
-    return pd.DataFrame(rows)
-
-def gerar_excel_em_memoria(df):
-    output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, sheet_name='Cardapio', index=False)
-
-    workbook  = writer.book
-    worksheet = writer.sheets['Cardapio']
-
-    formato_bloqueado = workbook.add_format({'locked': True, 'bg_color': '#F4F9FF'})
-    formato_liberado = workbook.add_format({'locked': False})
-
-    colunas_para_bloquear = ["Nível", "Categoria", "Produto Pai", "Item / Opcional", "Status", "ID iFood", "Código PDV", "Código Editado", "Grupo de opcionais"]
-
-    for col_num, col_name in enumerate(df.columns):
-        max_len = max(df[col_name].astype(str).map(len).max(), len(str(col_name))) + 2
-        if max_len > 60: max_len = 60
-        
-        if col_name in colunas_para_bloquear:
-            worksheet.set_column(col_num, col_num, max_len, formato_bloqueado)
-        else:
-            worksheet.set_column(col_num, col_num, max_len, formato_liberado)
-    
-    # APLICANDO O EFEITO ZEBRA 
-    formato_zebra = workbook.add_format({'bg_color': '#F2F2F2'}) # Tom cinza claro
-    
-    # Aplica a formatação condicional da linha 1 (abaixo do cabeçalho) até o final do DF
-    worksheet.conditional_format(1, 0, len(df), len(df.columns) - 1, {
-        'type': 'formula',
-        'criteria': '=MOD(ROW(), 2) = 0', # Lê-se: Se a linha for par, aplique a cor
-        'format': formato_zebra
-    })
-
-    worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
-    worksheet.protect('xicaroehfoda', {
-        'autofilter': True,
-        'objects': True,
-        'select_locked_cells': True,
-        'select_unlocked_cells': True, 
-        'format_columns': True
-    })
-    
-    writer.close()
-    return output.getvalue()
-
-def mapear_codigos_atuais(token, m_id):
-    headers = {"Authorization": f"Bearer {token}"}
-    url_base_v2 = f"https://merchant-api.ifood.com.br/catalog/v2.0/merchants/{m_id}"
-    
-    r_cat = requests.get(f"{url_base_v2}/catalogs", headers=headers)
-    if r_cat.status_code != 200: raise Exception("Erro ao listar catálogos")
-    catalog_id = r_cat.json()[0]['catalogId']
-    
-    url_tree = f"{url_base_v2}/catalogs/{catalog_id}/categories?includeItems=true"
-    r_tree = requests.get(url_tree, headers=headers)
-    categories = r_tree.json()
-    
-    mapa_atual = {}
-    for cat in categories:
-        for item in cat.get('items', []):
-            item_id = item.get('id')
-            item_code = item.get('externalCode', '')
-            mapa_atual[item_id] = str(item_code) if item_code else ""
-            
-            for group in item.get('optionGroups', []):
-                for option in group.get('options', []):
-                    opt_id = option.get('id')
-                    opt_code = option.get('externalCode', '')
-                    mapa_atual[opt_id] = str(opt_code) if opt_code else ""
-    return mapa_atual
-
-def atualizar_item(token, m_id, id_obj, novo_codigo, nivel):
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    url_base_v2 = f"https://merchant-api.ifood.com.br/catalog/v2.0/merchants/{m_id}"
-    
-    if nivel == 'PRODUTO':
-        url = f"{url_base_v2}/items/externalCode"
-        payload = {"itemId": str(id_obj), "externalCode": str(novo_codigo)}
-    else: 
-        url = f"{url_base_v2}/options/externalCode"
-        payload = {"optionId": str(id_obj), "externalCode": str(novo_codigo)}
-        
-    return requests.patch(url, json=payload, headers=headers)
-
 
 tab1, tab2, tab3 = st.tabs(["📥 1. Baixar planilha iFood","📤 2. Atualizar PDV's no iFood", "📤 3. Baixar planilha Vuca"])
 
@@ -375,6 +95,7 @@ with tab2:
                             
                         novo_codigo = str(novo_codigo).strip()
                         id_ifood = str(id_ifood).strip()
+                    
                         
                         codigo_no_ifood = mapa_atual.get(id_ifood)
                         
@@ -385,7 +106,7 @@ with tab2:
                             resp = atualizar_item(token, merchant_id, id_ifood, novo_codigo, nivel)
                             
                             if resp.status_code == 200:
-                                map_atual = novo_codigo
+                                mapa_atual[id_ifood] = novo_codigo
                                 atualizados += 1
                             elif resp.status_code == 429:
                                 st.warning("Limite da API atingido (Rate Limit). Pausando por 60 segundos...")
@@ -414,6 +135,22 @@ with tab2:
                     st.error(f"Erro ao processar: {e}")
 
 with tab3:
+    delivery = st.radio(
+    "Plataforma de delivery",
+    options=["ifood", "accon", "anotaai", "delivery_direto", "nnfood", "cardapioWeb", "keeta"],
+    format_func=lambda x: {
+        "ifood": "iFood",
+        "accon": "Accon",
+        "anotaai": "Anota AI",
+        "delivery_direto": "Delivery Direto",
+        "nnfood": "99Food",
+        "cardapioWeb": "Cardápio Web",
+        "keeta": "Keeta"
+    }[x],
+    index=0,
+    horizontal=True
+    )
+
     st.header("Baixar Planilha do Vuca")
     
     if st.button("Gerar Planilha Vuca"):
@@ -422,9 +159,9 @@ with tab3:
         else:
             with st.spinner("Fazendo login e extraindo informações do cardápio..."):
                 try:
-                    session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade)
+                    session, url_login = logar_vuca(v_login, v_senha, v_instancia, v_id_unidade, delivery)
                     st.success("Login no Vuca realizado com sucesso!")
-                    itens_vuca = extrair_cardapio_vuca(session, url_login, v_id_unidade)
+                    itens_vuca = extrair_cardapio_vuca(session, url_login, v_id_unidade, delivery)
                     df_vuca = pd.DataFrame(itens_vuca)
                     excel_data_vuca = gerar_excel_em_memoria(df_vuca)
                     
@@ -433,7 +170,7 @@ with tab3:
                     st.download_button(
                         label="📥 Clique aqui para Baixar o Excel do Vuca",
                         data=excel_data_vuca,
-                        file_name=f"Cardapio_Vuca_{v_id_unidade}_{data_str}.xlsx",
+                        file_name=f"Cardapio_Vuca_{delivery}_{v_id_unidade}_{data_str}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                         
