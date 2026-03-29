@@ -138,11 +138,24 @@ def extrair_cardapio_vuca(session, url_login, id_unidade, delivery):
 
     df_temp = pd.DataFrame(itens)
     
-    if delivery != "nnfood":
-        df_temp['Código PDV'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
-        df_temp['PDV_Referencia'] = df_temp['Código PDV'].where(df_temp['Nível'] == 'PRODUTO')
-        df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
-        df_temp = df_temp.sort_values(by=['PDV_Referencia', 'Nível', 'Código PDV'], ascending=[True, False, True])
-        df_temp = df_temp.drop(columns=['PDV_Referencia'])
+    # Lógica de ordenação unificada
+    df_temp['Sort_Key'] = df_temp['Código PDV']
+    if delivery == "nnfood":
+        # Para nnfood, extraímos o número de "item_123" ou "ad_123" para ordenação natural
+        df_temp['Sort_Key'] = df_temp['Código PDV'].str.extract(r'(\d+)').astype(float)
+    else:
+        # Para outras plataformas, convertemos para numérico conforme comportamento original
+        df_temp['Sort_Key'] = pd.to_numeric(df_temp['Código PDV'], errors='coerce')
+        df_temp['Código PDV'] = df_temp['Sort_Key']
+
+    # Criando referência do produto para agrupar complementos logo abaixo de seus respectivos produtos
+    df_temp['PDV_Referencia'] = df_temp['Sort_Key'].where(df_temp['Nível'] == 'PRODUTO')
+    df_temp['PDV_Referencia'] = df_temp.groupby(df_temp['Nível'].eq('PRODUTO').cumsum())['PDV_Referencia'].ffill()
+
+    # Ordenando por: Referência do Produto (Crescente), Nível (Produto antes de Complemento), e Código PDV (Crescente)
+    df_temp = df_temp.sort_values(by=['PDV_Referencia', 'Nível', 'Sort_Key'], ascending=[True, False, True])
+    
+    # Removendo colunas auxiliares
+    df_temp = df_temp.drop(columns=['PDV_Referencia', 'Sort_Key'])
     
     return df_temp.to_dict('records')
