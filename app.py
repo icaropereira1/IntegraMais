@@ -27,7 +27,7 @@ v_id_unidade = st.sidebar.text_input("ID da unidade")
 v_login = st.sidebar.text_input("Login")
 v_senha = st.sidebar.text_input("Senha", type="password")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📥 1. Baixar planilha iFood","📤 2. Atualizar PDV's no iFood", "📥 3. Baixar planilha Vuca", "⚖️ 4. Comparação"])
+tab1, tab2, tab3, tab4 = st.tabs(["📥 1. Baixar planilha iFood","📤 2. Atualizar PDV's no iFood", "📥 3. Baixar planilha Vuca", "🔍 4. Comparação"])
 
 with tab1:
     st.header("Baixar Cardápio Atual")
