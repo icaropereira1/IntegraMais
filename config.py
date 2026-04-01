@@ -11,3 +11,12 @@ COLUNAS_BLOQUEADAS = [
 SENHA_PROTECAO_EXCEL = "xicaroehfoda"
 COR_ZEBRA = "#F2F2F2"
 COR_BLOQUEADO = "#F4F9FF"
+
+# Comparação
+COLUNAS_COMPARACAO = [
+    "Nível", "Categoria", "Item (VUCA)", "Item (iFood)", "PDV (VUCA)", "PDV (iFood)", "Status", "Observação"
+]
+
+COR_OK = "#C6EFCE"       # Verde claro
+COR_DIVERGENTE = "#FFEB9C" # Amarelo claro
+COR_FALTANDO = "#FFC7CE"  # Vermelho claro
