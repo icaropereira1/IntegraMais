@@ -179,7 +179,7 @@ with tab3:
                     st.error(f"Erro ao logar no Vuca: {e}")
 
 with tab4:
-    st.header("⚖️ Comparação de Cardápios")
+    st.header("🔍 Comparação de Cardápios")
     st.write("Compare os códigos PDV entre o VUCA e o Marketplace.")
     
     plataforma = st.selectbox(
